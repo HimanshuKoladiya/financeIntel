@@ -1,0 +1,1 @@
+"""financeIntel Backend Application Package"""
