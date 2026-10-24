@@ -1,13 +1,28 @@
 import os
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", 
-    "postgresql://finance_admin:secure_finance_password_2026@localhost:5432/financeintel_db"
-)
+logger = logging.getLogger("financeintel.database")
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=10, max_overflow=20)
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    DATABASE_URL = "sqlite:///./financeintel.db"
+
+try:
+    if DATABASE_URL.startswith("postgresql"):
+        # Test connection with a 2-second timeout
+        test_engine = create_engine(DATABASE_URL, connect_args={"connect_timeout": 2}, pool_pre_ping=True)
+        with test_engine.connect():
+            pass
+        engine = test_engine
+    else:
+        engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+except Exception as e:
+    logger.warning("Postgres unavailable (%s). Using local SQLite database.", e)
+    DATABASE_URL = "sqlite:///./financeintel.db"
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -17,3 +32,4 @@ def get_db():
         yield db
     finally:
         db.close()
+

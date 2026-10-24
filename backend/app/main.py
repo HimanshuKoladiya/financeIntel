@@ -8,8 +8,190 @@ from .database import get_db, engine, Base
 from . import models, schemas
 from .ai_engine import FinanceIntelAIEngine
 
+from datetime import date
+
 # Ensure schema creation on startup
 Base.metadata.create_all(bind=engine)
+
+def seed_initial_data():
+    from .database import SessionLocal
+    db = SessionLocal()
+    try:
+        if db.query(models.ExceptionCase).count() == 0:
+            # Seed Vendors
+            v1 = models.Vendor(id="VEND-001", name="Apex Technologies Ltd.", contact_email="accounts.receivable@apextech.com")
+            v2 = models.Vendor(id="VEND-002", name="TechCorp Solutions Inc.", contact_email="billing@techcorpsolutions.com")
+            db.add_all([v1, v2])
+
+            # Seed Contracts
+            c1 = models.Contract(
+                id="CONT-APEX-2023",
+                vendor_id="VEND-001",
+                title="Master Hardware & Infrastructure Framework Agreement MSA-2023-V4",
+                terms_text="Clause 4.2: ThinkPad T14 Gen 4 enterprise units are rate-locked at ₹68,500 net per unit through Q4 2024. No inflation surcharge permitted without prior written CFO addendum.",
+                agreed_pricing_json=[{"sku": "SKU-LAP-T14", "description": "ThinkPad T14 Gen 4 Laptop", "max_unit_price": 68500.00}],
+                effective_date=date(2023, 1, 1),
+                expiry_date=date(2025, 12, 31)
+            )
+            c2 = models.Contract(
+                id="CONT-TECH-2024",
+                vendor_id="VEND-002",
+                title="Commercial Display Supply Agreement 2024",
+                terms_text="Clause 2.1: 34-inch UltraWide USB-C Displays agreed at ₹12,000 per unit delivered with 3-year warranty.",
+                agreed_pricing_json=[{"sku": "SKU-MON-34W", "description": "34-inch UltraWide Display Monitor", "max_unit_price": 12000.00}],
+                effective_date=date(2024, 1, 1),
+                expiry_date=date(2025, 12, 31)
+            )
+            db.add_all([c1, c2])
+
+            # Seed POs
+            po1 = models.PurchaseOrder(
+                id="PO-8841",
+                po_number="PO-2024-8841",
+                vendor_id="VEND-001",
+                total_amount=2740000.00,
+                items_json=[{"sku": "SKU-LAP-T14", "description": "ThinkPad T14 Gen 4 Laptop", "quantity": 40, "unit_price": 68500.00}],
+                status="APPROVED"
+            )
+            po2 = models.PurchaseOrder(
+                id="PO-8890",
+                po_number="PO-2024-8890",
+                vendor_id="VEND-002",
+                total_amount=600000.00,
+                items_json=[{"sku": "SKU-MON-34W", "description": "34-inch UltraWide Display Monitor", "quantity": 50, "unit_price": 12000.00}],
+                status="APPROVED"
+            )
+            db.add_all([po1, po2])
+
+            # Seed Goods Receipts
+            grn1 = models.GoodsReceipt(
+                id="GRN-44910",
+                grn_number="GRN-44910",
+                po_id="PO-8841",
+                received_items_json=[{"sku": "SKU-LAP-T14", "description": "ThinkPad T14 Gen 4 Laptop", "received_quantity": 40}],
+                received_date=date(2024, 10, 18),
+                warehouse_location="Bangalore Central Logistics Hub (DC-02)"
+            )
+            grn2 = models.GoodsReceipt(
+                id="GRN-44988",
+                grn_number="GRN-44988",
+                po_id="PO-8890",
+                received_items_json=[{"sku": "SKU-MON-34W", "description": "34-inch UltraWide Display Monitor", "received_quantity": 30}],
+                received_date=date(2024, 10, 20),
+                warehouse_location="Mumbai Primary Depot (DC-01)"
+            )
+            db.add_all([grn1, grn2])
+
+            # Seed Invoices
+            inv1 = models.Invoice(
+                id="INV-99210",
+                invoice_number="INV-99210-A",
+                po_id="PO-8841",
+                vendor_id="VEND-001",
+                billed_amount=2876000.00,
+                billed_items_json=[{"sku": "SKU-LAP-T14", "description": "ThinkPad T14 Gen 4 Laptop", "quantity": 40, "unit_price": 71900.00}],
+                status="RECEIVED"
+            )
+            inv2 = models.Invoice(
+                id="INV-4402",
+                invoice_number="INV-4402",
+                po_id="PO-8890",
+                vendor_id="VEND-002",
+                billed_amount=600000.00,
+                billed_items_json=[{"sku": "SKU-MON-34W", "description": "34-inch UltraWide Display Monitor", "quantity": 50, "unit_price": 12000.00}],
+                status="RECEIVED"
+            )
+            db.add_all([inv1, inv2])
+
+            # Seed Exception Cases
+            exc1 = models.ExceptionCase(
+                id="EXC-8841",
+                type="PRICE_VARIANCE",
+                severity="CRITICAL",
+                vendor_name="Apex Technologies Ltd.",
+                po_number="PO-2024-8841",
+                invoice_number="INV-99210-A",
+                financial_exposure=136000.00,
+                status="HOLD",
+                related_doc_ids={"po_id": "PO-8841", "invoice_id": "INV-99210", "grn_id": "GRN-44910", "contract_id": "CONT-APEX-2023"}
+            )
+            exc2 = models.ExceptionCase(
+                id="EXC-8890",
+                type="QUANTITY_SHORTFALL",
+                severity="HIGH",
+                vendor_name="TechCorp Solutions Inc.",
+                po_number="PO-2024-8890",
+                invoice_number="INV-4402",
+                financial_exposure=240000.00,
+                status="HOLD",
+                related_doc_ids={"po_id": "PO-8890", "invoice_id": "INV-4402", "grn_id": "GRN-44988", "contract_id": "CONT-TECH-2024"}
+            )
+            db.add_all([exc1, exc2])
+
+            # Seed Decision Briefs
+            brief1 = models.DecisionBrief(
+                id="BRIEF-8841",
+                exception_id="EXC-8841",
+                decision_status="HOLD",
+                financial_exposure=136000.00,
+                ai_reasoning_text="Cross-Document AI Reasoning detected an unauthorized unit price variance. Invoiced rate exceeds Contract MSA Clause 4.2 by ₹3,400 per laptop across 40 units.",
+                verified_evidence_json=[
+                    "Invoice INV-99210-A bills 40 units of 'ThinkPad T14 Gen 4' at ₹71,900.00/unit.",
+                    "Master Contract MSA-2023-V4 Clause 4.2 explicitly limits price to ₹68,500.00 net through Q4 2024.",
+                    "PO-2024-8841 matches contract price (₹68,500). Variance originates solely on vendor billing line.",
+                    "WMS GRN-44910 confirms full delivery receipt of 40 units in good order."
+                ],
+                recommended_actions_json=[
+                    "Apply immediate SAP ERP Payment Block 'R' on Invoice #INV-99210-A.",
+                    "Issue Discrepancy Notice & Request amended invoice or ₹1,36,000 credit memo."
+                ],
+                draft_communication=(
+                    "To: accounts.receivable@apextech.com\n"
+                    "Subject: PAYMENT HOLD: Invoice INV-99210-A against PO-2024-8841 (Price Variance)\n\n"
+                    "Dear Apex Technologies Billing Team,\n\n"
+                    "Payment for Invoice INV-99210-A has been placed on HOLD due to a ₹3,400/unit price variance.\n"
+                    "Under MSA-2023-V4 Clause 4.2, the agreed price is ₹68,500.00 for 40 units of ThinkPad T14 Gen 4, whereas "
+                    "₹71,900.00 was billed, creating an uncontracted variance of ₹1,36,000.00.\n\n"
+                    "Please provide an amended invoice or credit note to release payment."
+                ),
+                audit_events_json=[
+                    {"timestamp": "2024-10-24 09:15:00 UTC", "action": "INSPECTION_COMPLETED", "actor": "financeIntel AI Agent", "details": "4-Way match discrepancy flagged"}
+                ]
+            )
+            brief2 = models.DecisionBrief(
+                id="BRIEF-8890",
+                exception_id="EXC-8890",
+                decision_status="HOLD",
+                financial_exposure=240000.00,
+                ai_reasoning_text="Physical goods receipt shortfall detected: Invoice bills for 50 monitors while WMS GRN confirms physical receipt of only 30 units (20 missing units).",
+                verified_evidence_json=[
+                    "Invoice INV-4402 bills for 50x '34-inch UltraWide Display Monitor' @ ₹12,000.00 = ₹6,00,000.",
+                    "WMS GRN-44988 at Mumbai Depot DC-01 registers physical dock intake of only 30 units.",
+                    "Unreconciled physical variance: 20 units missing from warehouse receiving logs."
+                ],
+                recommended_actions_json=[
+                    "Withhold ₹2,40,000.00 from Invoice #INV-4402.",
+                    "Release partial payment for 30 verified units (₹3,60,000.00) or hold pending second delivery manifest."
+                ],
+                draft_communication=(
+                    "To: billing@techcorpsolutions.com\n"
+                    "Subject: Quantity Shortfall Notice: Invoice INV-4402 against PO-2024-8890\n\n"
+                    "Dear Billing Team,\n\n"
+                    "WMS receiving confirms only 30 of the 50 billed 34-inch UltraWide monitors have been received at our Mumbai Depot. "
+                    "Payment for the 20 unreceived units (₹2,40,000.00) has been withheld."
+                ),
+                audit_events_json=[]
+            )
+            db.add_all([brief1, brief2])
+            db.commit()
+    except Exception as err:
+        db.rollback()
+        print("Warning during seed:", err)
+    finally:
+        db.close()
+
+seed_initial_data()
+
 
 app = FastAPI(
     title="financeIntel Intelligence Layer API",
